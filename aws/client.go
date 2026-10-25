@@ -102,41 +102,71 @@ func getBaseConfig(creds Credentials) (*awsbase.Config, error) {
 	return config, nil
 }
 
-// Merge returns merged credentials. A single role in other overrides the final
-// role while preserving any preceding roles in the provider's role chain.
-func (c Credentials) Merge(other Credentials) Credentials {
-	if other.AccessKey != "" {
-		c.AccessKey = other.AccessKey
+// Merge credentials from the TFLint plugin configuration (overrides) to
+// credentials read from the Terraform provider "aws" block (base).
+// Merge returns a new Credentials where non-empty fields from overrides
+// take precedence over base. For AssumeRoles, the merge strategy depends
+// on the number of roles in overrides:
+//   - 0 roles: base's chain is kept as-is.
+//   - 1 role:  patches base's final role field-by-field.
+//   - >1 roles: replaces base's chain entirely with overrides' chain.
+func (base Credentials) Merge(overrides Credentials) Credentials {
+	if overrides.AccessKey != "" {
+		base.AccessKey = overrides.AccessKey
 	}
-	if other.SecretKey != "" {
-		c.SecretKey = other.SecretKey
+	if overrides.SecretKey != "" {
+		base.SecretKey = overrides.SecretKey
 	}
-	if other.Profile != "" {
-		c.Profile = other.Profile
+	if overrides.Profile != "" {
+		base.Profile = overrides.Profile
 	}
-	if other.CredsFile != "" {
-		c.CredsFile = other.CredsFile
+	if overrides.CredsFile != "" {
+		base.CredsFile = overrides.CredsFile
 	}
-	if other.Region != "" {
-		c.Region = other.Region
+	if overrides.Region != "" {
+		base.Region = overrides.Region
 	}
-	c.AssumeRoles = append([]AssumeRole(nil), c.AssumeRoles...)
-	if len(other.AssumeRoles) > 1 || len(c.AssumeRoles) == 0 {
-		c.AssumeRoles = append([]AssumeRole(nil), other.AssumeRoles...)
-	} else if len(other.AssumeRoles) == 1 {
-		last := &c.AssumeRoles[len(c.AssumeRoles)-1]
-		if other.AssumeRoles[0].RoleARN != "" {
-			last.RoleARN = other.AssumeRoles[0].RoleARN
-		}
-		if other.AssumeRoles[0].SessionName != "" {
-			last.SessionName = other.AssumeRoles[0].SessionName
-		}
-		if other.AssumeRoles[0].ExternalID != "" {
-			last.ExternalID = other.AssumeRoles[0].ExternalID
-		}
-		if other.AssumeRoles[0].Policy != "" {
-			last.Policy = other.AssumeRoles[0].Policy
-		}
+
+	base.AssumeRoles = mergeAssumeRoles(base.AssumeRoles, overrides.AssumeRoles)
+	return base
+}
+
+// mergeAssumeRoles combines two assume-role slices. A defensive copy is
+// always made so the caller's original slices are never mutated.
+func mergeAssumeRoles(base, overrides []AssumeRole) []AssumeRole {
+	base = append([]AssumeRole(nil), base...)
+
+	switch {
+	// No overrides — keep base's chain unchanged.
+	case len(overrides) == 0:
+		return base
+
+	// Overrides specify a full chain (>1 role) or base has no chain to
+	// preserve — replace entirely with the overrides' chain.
+	case len(overrides) > 1 || len(base) == 0:
+		return append([]AssumeRole(nil), overrides...)
+
+	// Single override role — patch non-empty fields into base's final role while
+	// preserving any preceding roles in the provider chain.
+	case len(overrides) == 1:
+		patchAssumeRole(&base[len(base)-1], overrides[0])
 	}
-	return c
+
+	return base
+}
+
+// patchAssumeRole overwrites non-empty fields in dst with values from src.
+func patchAssumeRole(dst *AssumeRole, src AssumeRole) {
+	if src.RoleARN != "" {
+		dst.RoleARN = src.RoleARN
+	}
+	if src.SessionName != "" {
+		dst.SessionName = src.SessionName
+	}
+	if src.ExternalID != "" {
+		dst.ExternalID = src.ExternalID
+	}
+	if src.Policy != "" {
+		dst.Policy = src.Policy
+	}
 }

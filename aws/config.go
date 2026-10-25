@@ -9,13 +9,13 @@ type AssumeRole struct {
 
 // Config is the configuration for the ruleset.
 type Config struct {
-	DeepCheck             bool        `hclext:"deep_check,optional"`
-	AccessKey             string      `hclext:"access_key,optional"`
-	SecretKey             string      `hclext:"secret_key,optional"`
-	Region                string      `hclext:"region,optional"`
-	Profile               string      `hclext:"profile,optional"`
-	SharedCredentialsFile string      `hclext:"shared_credentials_file,optional"`
-	AssumeRole            *AssumeRole `hclext:"assume_role,block"`
+	DeepCheck             bool         `hclext:"deep_check,optional"`
+	AccessKey             string       `hclext:"access_key,optional"`
+	SecretKey             string       `hclext:"secret_key,optional"`
+	Region                string       `hclext:"region,optional"`
+	Profile               string       `hclext:"profile,optional"`
+	SharedCredentialsFile string       `hclext:"shared_credentials_file,optional"`
+	AssumeRoles           []AssumeRole `hclext:"assume_role,block"`
 }
 
 func (c *Config) toCredentials() Credentials {
@@ -27,9 +27,7 @@ func (c *Config) toCredentials() Credentials {
 		CredsFile: c.SharedCredentialsFile,
 	}
 
-	if c.AssumeRole != nil {
-		credentials.AssumeRoles = []AssumeRole{*c.AssumeRole}
-	}
+	credentials.AssumeRoles = append([]AssumeRole(nil), c.AssumeRoles...)
 
 	return credentials
 }

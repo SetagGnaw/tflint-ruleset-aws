@@ -237,6 +237,36 @@ func Test_Merge(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "override chain replaces provider chain",
+			Self: Credentials{
+				AssumeRoles: []AssumeRole{
+					{
+						RoleARN: "arn:aws:iam::111111111111:role/PROVIDER_ROLE",
+					},
+				},
+			},
+			Other: Credentials{
+				AssumeRoles: []AssumeRole{
+					{
+						RoleARN: "arn:aws:iam::222222222222:role/INITIAL_OVERRIDE_ROLE",
+					},
+					{
+						RoleARN: "arn:aws:iam::333333333333:role/FINAL_OVERRIDE_ROLE",
+					},
+				},
+			},
+			Expected: Credentials{
+				AssumeRoles: []AssumeRole{
+					{
+						RoleARN: "arn:aws:iam::222222222222:role/INITIAL_OVERRIDE_ROLE",
+					},
+					{
+						RoleARN: "arn:aws:iam::333333333333:role/FINAL_OVERRIDE_ROLE",
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range cases {

@@ -16,7 +16,11 @@ plugin "aws" {
     shared_credentials_file = "~/.aws/credentials"
 
     assume_role {
-        role_arn     = "arn:aws:iam::123456789012:role/ROLE_NAME"
+        role_arn = "arn:aws:iam::123456789012:role/INITIAL_ROLE_NAME"
+    }
+
+    assume_role {
+        role_arn     = "arn:aws:iam::234567890123:role/FINAL_ROLE_NAME"
         external_id  = "EXTERNAL_ID"
         policy       = "..."
         session_name = "SESSION_NAME"
@@ -64,4 +68,7 @@ AWS shared credentials file path used in the deep checking.
 
 Default: Assume role config declared in the `provider` block.
 
-AWS assume role config used in the deep checking.
+AWS assume role configuration used in deep checking. Multiple blocks define an
+ordered role chain. A chain of multiple override roles replaces the chain from
+the `provider` block; a single override role updates the final provider role
+while preserving any preceding roles.
