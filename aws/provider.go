@@ -52,6 +52,28 @@ func GetCredentialsFromProvider(runner tflint.Runner) (map[string]Credentials, e
 	}
 
 	m := map[string]Credentials{}
+	opts := &tflint.EvaluateExprOption{ModuleCtx: tflint.RootModuleCtxType}
+
+	type stringAttribute struct {
+		name        string
+		destination *string
+	}
+	evaluateStringAttributes := func(attributes hclext.Attributes, destinations []stringAttribute) error {
+		for _, destination := range destinations {
+			attr, exists := attributes[destination.name]
+			if !exists {
+				continue
+			}
+
+			if err := runner.EvaluateExpr(attr.Expr, func(value string) error {
+				*destination.destination = value
+				return nil
+			}, opts); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 
 	for _, provider := range providers.Blocks {
 		if provider.Labels[0] != "aws" {
@@ -60,89 +82,27 @@ func GetCredentialsFromProvider(runner tflint.Runner) (map[string]Credentials, e
 
 		creds := Credentials{}
 
-		opts := &tflint.EvaluateExprOption{ModuleCtx: tflint.RootModuleCtxType}
-
-		if attr, exists := provider.Body.Attributes["access_key"]; exists {
-			if err := runner.EvaluateExpr(attr.Expr, func(accessKey string) error {
-				creds.AccessKey = accessKey
-				return nil
-			}, opts); err != nil {
-				return nil, err
-			}
-		}
-
-		if attr, exists := provider.Body.Attributes["secret_key"]; exists {
-			if err := runner.EvaluateExpr(attr.Expr, func(secretKey string) error {
-				creds.SecretKey = secretKey
-				return nil
-			}, opts); err != nil {
-				return nil, err
-			}
-		}
-
-		if attr, exists := provider.Body.Attributes["profile"]; exists {
-			if err := runner.EvaluateExpr(attr.Expr, func(profile string) error {
-				creds.Profile = profile
-				return nil
-			}, opts); err != nil {
-				return nil, err
-			}
-		}
-
-		if attr, exists := provider.Body.Attributes["shared_credentials_file"]; exists {
-			if err := runner.EvaluateExpr(attr.Expr, func(credsFile string) error {
-				creds.CredsFile = credsFile
-				return nil
-			}, opts); err != nil {
-				return nil, err
-			}
-		}
-
-		if attr, exists := provider.Body.Attributes["region"]; exists {
-			if err := runner.EvaluateExpr(attr.Expr, func(region string) error {
-				creds.Region = region
-				return nil
-			}, opts); err != nil {
-				return nil, err
-			}
+		if err := evaluateStringAttributes(provider.Body.Attributes, []stringAttribute{
+			{name: "access_key", destination: &creds.AccessKey},
+			{name: "secret_key", destination: &creds.SecretKey},
+			{name: "profile", destination: &creds.Profile},
+			{name: "shared_credentials_file", destination: &creds.CredsFile},
+			{name: "region", destination: &creds.Region},
+		}); err != nil {
+			return nil, err
 		}
 
 		for _, assumeRole := range provider.Body.Blocks {
-			if attr, exists := assumeRole.Body.Attributes["role_arn"]; exists {
-				if err := runner.EvaluateExpr(attr.Expr, func(roleARN string) error {
-					creds.AssumeRoleARN = roleARN
-					return nil
-				}, opts); err != nil {
-					return nil, err
-				}
+			assumeRoleConfig := AssumeRole{}
+			if err := evaluateStringAttributes(assumeRole.Body.Attributes, []stringAttribute{
+				{name: "role_arn", destination: &assumeRoleConfig.RoleARN},
+				{name: "session_name", destination: &assumeRoleConfig.SessionName},
+				{name: "external_id", destination: &assumeRoleConfig.ExternalID},
+				{name: "policy", destination: &assumeRoleConfig.Policy},
+			}); err != nil {
+				return nil, err
 			}
-
-			if attr, exists := assumeRole.Body.Attributes["session_name"]; exists {
-				if err := runner.EvaluateExpr(attr.Expr, func(sessionName string) error {
-					creds.AssumeRoleSessionName = sessionName
-					return nil
-				}, opts); err != nil {
-					return nil, err
-				}
-			}
-
-			if attr, exists := assumeRole.Body.Attributes["external_id"]; exists {
-				if err := runner.EvaluateExpr(attr.Expr, func(id string) error {
-					creds.AssumeRoleExternalID = id
-					return nil
-				}, opts); err != nil {
-					return nil, err
-				}
-			}
-
-			if attr, exists := assumeRole.Body.Attributes["policy"]; exists {
-				if err := runner.EvaluateExpr(attr.Expr, func(policy string) error {
-					creds.AssumeRolePolicy = policy
-					return nil
-				}, opts); err != nil {
-					return nil, err
-				}
-			}
+			creds.AssumeRoles = append(creds.AssumeRoles, assumeRoleConfig)
 		}
 		if attr, exists := provider.Body.Attributes["alias"]; exists {
 			if err := runner.EvaluateExpr(attr.Expr, func(alias string) error {

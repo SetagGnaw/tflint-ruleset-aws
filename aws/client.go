@@ -33,15 +33,12 @@ var _ Client = (*AwsClient)(nil)
 
 // Credentials is credentials for AWS used in deep check mode
 type Credentials struct {
-	AccessKey             string
-	SecretKey             string
-	Profile               string
-	CredsFile             string
-	AssumeRoleARN         string
-	AssumeRoleExternalID  string
-	AssumeRolePolicy      string
-	AssumeRoleSessionName string
-	Region                string
+	AccessKey   string
+	SecretKey   string
+	Profile     string
+	CredsFile   string
+	AssumeRoles []AssumeRole
+	Region      string
 }
 
 // NewClient returns a new Client with configured session
@@ -87,12 +84,15 @@ func getBaseConfig(creds Credentials) (*awsbase.Config, error) {
 		CallerDocumentationURL: "https://github.com/terraform-linters/tflint-ruleset-aws/blob/master/docs/deep_checking.md",
 	}
 
-	if creds.AssumeRoleARN != "" || creds.AssumeRoleExternalID != "" || creds.AssumeRolePolicy != "" || creds.AssumeRoleSessionName != "" {
+	for _, assumeRole := range creds.AssumeRoles {
+		if assumeRole.RoleARN == "" && assumeRole.ExternalID == "" && assumeRole.Policy == "" && assumeRole.SessionName == "" {
+			continue
+		}
 		config.AssumeRole = append(config.AssumeRole, awsbase.AssumeRole{
-			RoleARN:     creds.AssumeRoleARN,
-			ExternalID:  creds.AssumeRoleExternalID,
-			Policy:      creds.AssumeRolePolicy,
-			SessionName: creds.AssumeRoleSessionName,
+			RoleARN:     assumeRole.RoleARN,
+			ExternalID:  assumeRole.ExternalID,
+			Policy:      assumeRole.Policy,
+			SessionName: assumeRole.SessionName,
 		})
 	}
 	if expandedCredsFile != "" {
@@ -102,7 +102,8 @@ func getBaseConfig(creds Credentials) (*awsbase.Config, error) {
 	return config, nil
 }
 
-// Merge returns a merged credentials
+// Merge returns merged credentials. A single role in other overrides the final
+// role while preserving any preceding roles in the provider's role chain.
 func (c Credentials) Merge(other Credentials) Credentials {
 	if other.AccessKey != "" {
 		c.AccessKey = other.AccessKey
@@ -119,17 +120,23 @@ func (c Credentials) Merge(other Credentials) Credentials {
 	if other.Region != "" {
 		c.Region = other.Region
 	}
-	if other.AssumeRoleARN != "" {
-		c.AssumeRoleARN = other.AssumeRoleARN
-	}
-	if other.AssumeRoleSessionName != "" {
-		c.AssumeRoleSessionName = other.AssumeRoleSessionName
-	}
-	if other.AssumeRoleExternalID != "" {
-		c.AssumeRoleExternalID = other.AssumeRoleExternalID
-	}
-	if other.AssumeRolePolicy != "" {
-		c.AssumeRolePolicy = other.AssumeRolePolicy
+	c.AssumeRoles = append([]AssumeRole(nil), c.AssumeRoles...)
+	if len(other.AssumeRoles) > 1 || len(c.AssumeRoles) == 0 {
+		c.AssumeRoles = append([]AssumeRole(nil), other.AssumeRoles...)
+	} else if len(other.AssumeRoles) == 1 {
+		last := &c.AssumeRoles[len(c.AssumeRoles)-1]
+		if other.AssumeRoles[0].RoleARN != "" {
+			last.RoleARN = other.AssumeRoles[0].RoleARN
+		}
+		if other.AssumeRoles[0].SessionName != "" {
+			last.SessionName = other.AssumeRoles[0].SessionName
+		}
+		if other.AssumeRoles[0].ExternalID != "" {
+			last.ExternalID = other.AssumeRoles[0].ExternalID
+		}
+		if other.AssumeRoles[0].Policy != "" {
+			last.Policy = other.AssumeRoles[0].Policy
+		}
 	}
 	return c
 }
