@@ -31,6 +31,15 @@ func Test_clientCache_get(t *testing.T) {
 			},
 			calls: 2,
 		},
+		{
+			name: "distinct assume role chains build distinct clients",
+			creds: []Credentials{
+				{Region: "us-east-1", AssumeRoles: []AssumeRole{{RoleARN: "arn:aws:iam::111111111111:role/first"}}},
+				{Region: "us-east-1", AssumeRoles: []AssumeRole{{RoleARN: "arn:aws:iam::222222222222:role/second"}}},
+				{Region: "us-east-1", AssumeRoles: []AssumeRole{{RoleARN: "arn:aws:iam::111111111111:role/first"}}},
+			},
+			calls: 2,
+		},
 	}
 
 	for _, tc := range cases {
@@ -41,18 +50,19 @@ func Test_clientCache_get(t *testing.T) {
 				return &AwsClient{}, nil
 			})
 
-			clients := map[Credentials]Client{}
+			clients := map[credentialsKey]Client{}
 			for _, creds := range tc.creds {
 				client, err := cache.get(creds)
 				if err != nil {
 					t.Fatalf("unexpected error: %s", err)
 				}
-				if prev, ok := clients[creds]; ok {
+				key := creds.cacheKey()
+				if prev, ok := clients[key]; ok {
 					if prev != client {
 						t.Fatalf("expected the same client for %+v, got a different one", creds)
 					}
 				} else {
-					clients[creds] = client
+					clients[key] = client
 				}
 			}
 
